@@ -25,7 +25,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--month", type=int, default=4)
     parser.add_argument("--limit", type=int, default=0)
-    parser.add_argument("--bucket-count", type=int, default=100)
     parser.add_argument("--max-text-bytes", type=int, default=8_000)
     parser.add_argument("--source-batch-rows", type=int, default=1_000)
     parser.add_argument("--progress-every", type=int, default=10_000)
@@ -53,6 +52,26 @@ def timestamp_ms(*values: Any) -> int:
     return 0
 
 
+def month_bucket(row: dict[str, Any]) -> str:
+    try:
+        year = int(row.get("year"))
+        month = int(row.get("month"))
+        if 1 <= month <= 12:
+            return f"news:{year:04d}-{month:02d}"
+    except (TypeError, ValueError):
+        pass
+
+    for value in (row.get("publish_date"), row.get("warc_date")):
+        if not isinstance(value, str) or not value:
+            continue
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return f"news:{parsed.year:04d}-{parsed.month:02d}"
+        except ValueError:
+            continue
+    raise ValueError("row has no usable year and month")
+
+
 def compact_metadata(row: dict[str, Any]) -> dict[str, Any]:
     metadata = {
         "title": row.get("title"),
@@ -66,7 +85,7 @@ def compact_metadata(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def convert_row(
-    row: dict[str, Any], row_number: int, bucket_count: int, max_text_bytes: int
+    row: dict[str, Any], row_number: int, bucket: str, max_text_bytes: int
 ) -> dict[str, Any] | None:
     parts = [
         value.strip()
@@ -80,11 +99,9 @@ def convert_row(
     if not isinstance(identity, str) or not identity:
         identity = f"{row.get('url', '')}:{row.get('warc_date', '')}:{row_number}"
     digest = hashlib.blake2b(identity.encode("utf-8"), digest_size=16).digest()
-    lang = row.get("lang") or row.get("language_short") or "unknown"
-    shard = int.from_bytes(digest[:8], "big") % bucket_count
 
     return {
-        "bucket": f"news:{lang}:{shard:04d}",
+        "bucket": bucket,
         "oid": f"news:{digest.hex()}",
         "timestamp_ms": timestamp_ms(row.get("publish_date"), row.get("warc_date")),
         "text": truncate_utf8("\n".join(parts), max_text_bytes),
@@ -129,10 +146,11 @@ def main() -> int:
         sys.exit("--month must be between 1 and 12")
     if args.limit < 0:
         sys.exit("--limit must not be negative")
-    if min(args.bucket_count, args.max_text_bytes, args.source_batch_rows) < 1:
-        sys.exit("--bucket-count, --max-text-bytes and --source-batch-rows must be positive")
+    if min(args.max_text_bytes, args.source_batch_rows) < 1:
+        sys.exit("--max-text-bytes and --source-batch-rows must be positive")
 
     dataset = load_stream(args.year, args.month, args.all)
+    fixed_bucket = None if args.all else f"news:{args.year:04d}-{args.month:02d}"
     started = time.monotonic()
     seen = 0
     written = 0
@@ -142,7 +160,8 @@ def main() -> int:
             if args.limit and seen >= args.limit:
                 break
             seen += 1
-            document = convert_row(row, seen, args.bucket_count, args.max_text_bytes)
+            bucket = fixed_bucket or month_bucket(row)
+            document = convert_row(row, seen, bucket, args.max_text_bytes)
             if document is not None:
                 sys.stdout.write(
                     json.dumps(document, ensure_ascii=False, separators=(",", ":")) + "\n"

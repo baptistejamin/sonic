@@ -94,6 +94,14 @@ fn cli() -> Command {
                         .value_parser(["fresh", "upsert"]),
                 )
                 .arg(
+                    Arg::new("skip-flush")
+                        .long("skip-flush")
+                        .help(
+                            "Keep the collection when importing a fresh, previously unused bucket",
+                        )
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
                     Arg::new("batch-documents")
                         .long("batch-documents")
                         .default_value("1000")
@@ -221,8 +229,8 @@ fn run_import(
     let limit = *command.get_one::<usize>("limit").expect("default limit");
     let multiplexer = SonicMultiplexer::new()?;
 
-    // Issue FLUSHC on its own short-lived connection before any worker starts writing.
-    if matches!(mode, BulkMode::Fresh) {
+    // Issue FLUSHC once unless this import adds a fresh bucket to an initialized collection.
+    if matches!(mode, BulkMode::Fresh) && !command.get_flag("skip-flush") {
         SonicChannelIngestBlocking::connect(addr, password, &multiplexer)?.flushc(&collection)?;
     }
 
