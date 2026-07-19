@@ -17,6 +17,11 @@ DATASET = "ruggsea/infini-news-corpus"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Stream every available year and month partition",
+    )
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--month", type=int, default=4)
     parser.add_argument("--limit", type=int, default=0)
@@ -94,13 +99,17 @@ def iter_rows(dataset: Any, batch_size: int) -> Iterator[dict[str, Any]]:
             yield {key: values[index] for key, values in batch.items()}
 
 
-def load_stream(year: int, month: int) -> Any:
+def load_stream(year: int, month: int, all_partitions: bool) -> Any:
     try:
         load_dataset = importlib.import_module("datasets").load_dataset
     except ImportError:
         sys.exit("Missing dependency: install it with `python -m pip install datasets`")
 
-    data_files = f"data/year={year}/month={month:02d}/part-*.parquet"
+    data_files = (
+        "data/year=*/month=*/part-*.parquet"
+        if all_partitions
+        else f"data/year={year}/month={month:02d}/part-*.parquet"
+    )
     print(f"Streaming {DATASET}/{data_files}", file=sys.stderr)
     dataset = load_dataset(
         DATASET,
@@ -123,7 +132,7 @@ def main() -> int:
     if min(args.bucket_count, args.max_text_bytes, args.source_batch_rows) < 1:
         sys.exit("--bucket-count, --max-text-bytes and --source-batch-rows must be positive")
 
-    dataset = load_stream(args.year, args.month)
+    dataset = load_stream(args.year, args.month, args.all)
     started = time.monotonic()
     seen = 0
     written = 0
