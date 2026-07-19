@@ -39,6 +39,11 @@ impl Config {
             panic!("write_buffer for kv must not be zero");
         }
 
+        // Check 'block_cache' for KV
+        if self.store.kv.database.block_cache == 0 {
+            panic!("block_cache for kv must not be zero");
+        }
+
         // Check 'flush_after' for KV
         if self.store.kv.database.flush_after >= self.store.kv.pool.inactive_after {
             panic!("flush_after for kv must be strictly lower than inactive_after");
@@ -123,7 +128,14 @@ pub struct ConfigStoreKVDatabase {
 
     pub write_buffer: usize,
 
+    #[serde(default = "default_block_cache")]
+    pub block_cache: usize,
+
     pub write_ahead_log: bool,
+}
+
+fn default_block_cache() -> usize {
+    65536
 }
 
 #[derive(Deserialize)]
@@ -185,6 +197,7 @@ pub(crate) mod tests {
         database.max_compactions = 1
         database.max_flushes = 1
         database.write_buffer = 16384
+        database.block_cache = 65536
         database.write_ahead_log = true
 
         [store.fst]

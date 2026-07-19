@@ -108,6 +108,7 @@ Channel line buffer.
 * `database.max_compactions` (type: _integer_, allowed: numbers, default: `1`) — Limit on the number of concurrent database compaction jobs
 * `database.max_flushes` (type: _integer_, allowed: numbers, default: `1`) — Limit on the number of concurrent database flush jobs
 * `database.write_buffer` (type: _integer_, allowed: numbers, default: `16384`) — Maximum size in KB of the database write buffer, after which data gets flushed to disk (ie. `16384` is `16MB`; the size should be a multiple of `1024`, eg. `128 * 1024 = 131072` for `128MB`)
+* `database.block_cache` (type: _integer_, allowed: numbers, default: `65536`) — Maximum size in KB of the shared RocksDB block cache used by all collections and column families (ie. `65536` is `64MB`)
 * `database.write_ahead_log` (type: _boolean_, allowed: `true`, `false`, default: `true`) — Whether to enable Write-Ahead Log or not (it avoids losing non-flushed data in case of server crash)
 
 ### FST store configuration
