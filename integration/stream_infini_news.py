@@ -118,6 +118,8 @@ def main() -> int:
     args = parse_args()
     if not 1 <= args.month <= 12:
         sys.exit("--month must be between 1 and 12")
+    if args.limit < 0:
+        sys.exit("--limit must not be negative")
     if min(args.bucket_count, args.max_text_bytes, args.source_batch_rows) < 1:
         sys.exit("--bucket-count, --max-text-bytes and --source-batch-rows must be positive")
 
@@ -127,9 +129,10 @@ def main() -> int:
     written = 0
 
     try:
-        for seen, row in enumerate(iter_rows(dataset, args.source_batch_rows), 1):
-            if args.limit and seen > args.limit:
+        for row in iter_rows(dataset, args.source_batch_rows):
+            if args.limit and seen >= args.limit:
                 break
+            seen += 1
             document = convert_row(row, seen, args.bucket_count, args.max_text_bytes)
             if document is not None:
                 sys.stdout.write(
