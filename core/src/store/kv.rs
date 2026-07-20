@@ -13,9 +13,9 @@ use rocksdb::backup::{
     RestoreOptions as DBRestoreOptions,
 };
 use rocksdb::{
-    BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, DBCompactionStyle, DBCompressionType,
-    Direction, Env as DBEnv, Error as DBError, FlushOptions, IteratorMode, Options as DBOptions,
-    WriteBatch, WriteBatchIteratorCf, WriteOptions,
+    BlockBasedOptions, ColumnFamilyDescriptor, DB, DBCompactionStyle, DBCompressionType, Direction,
+    Env as DBEnv, Error as DBError, FlushOptions, IteratorMode, Options as DBOptions, WriteBatch,
+    WriteBatchIteratorCf, WriteOptions,
 };
 use std::fmt;
 use std::fs;
@@ -48,7 +48,6 @@ use super::stats::{
 pub struct StoreKVPool {
     pool: Arc<RwLock<HashMap<StoreKVKey, StoreKVBox>>>,
     kv_store_config: Arc<crate::config::ConfigStoreKV>,
-    block_cache: Arc<Cache>,
     store_access_lock: Arc<RwLock<()>>,
     store_acquire_lock: Arc<Mutex<()>>,
     store_flush_lock: Arc<Mutex<()>>,
@@ -56,7 +55,6 @@ pub struct StoreKVPool {
 
 pub struct StoreKVBuilder {
     kv_store_config: Arc<crate::config::ConfigStoreKV>,
-    block_cache: Arc<Cache>,
 }
 
 pub struct StoreKV {
@@ -170,13 +168,9 @@ fn merge_postings(
 
 impl StoreKVPool {
     pub fn new(kv_store_config: Arc<crate::config::ConfigStoreKV>) -> Self {
-        let block_cache = Arc::new(Cache::new_lru_cache(
-            kv_store_config.database.block_cache * 1024,
-        ));
         Self {
             pool: Arc::default(),
             kv_store_config,
-            block_cache,
             store_access_lock: Arc::default(),
             store_acquire_lock: Arc::default(),
             store_flush_lock: Arc::default(),
@@ -232,7 +226,6 @@ impl StoreKVPool {
 
             let builder = StoreKVBuilder {
                 kv_store_config: Arc::clone(&self.kv_store_config),
-                block_cache: Arc::clone(&self.block_cache),
             };
 
             // Open KV database? (ie. we do not need to create a new KV database file tree if \
@@ -452,7 +445,6 @@ impl StoreKVPool {
             if let Ok(collection_hash) = collection_radix.as_decimal() {
                 let origin_kv = StoreKVBuilder {
                     kv_store_config: Arc::clone(&self.kv_store_config),
-                    block_cache: Arc::clone(&self.block_cache),
                 }
                 .open(collection_hash as StoreKVAtom)
                 .map_err(|_| io::Error::other("database open failure"))?;
@@ -597,9 +589,6 @@ impl StoreKVBuilder {
         table_options.set_bloom_filter(10.0, false);
         table_options.set_whole_key_filtering(true);
         table_options.set_optimize_filters_for_memory(true);
-        table_options.set_block_cache(self.block_cache.as_ref());
-        table_options.set_cache_index_and_filter_blocks(true);
-        table_options.set_pin_l0_filter_and_index_blocks_in_cache(true);
         db_options.set_block_based_table_factory(&table_options);
         db_options.set_memtable_whole_key_filtering(true);
 
@@ -2537,7 +2526,6 @@ impl fmt::Debug for StoreKVPool {
             // NOTE: We don’t care about the configuration,
             //   we can see it elsewhere if needed.
             kv_store_config: _kv_store_config,
-            block_cache: _block_cache,
         } = self;
 
         f.debug_struct("StoreKVPool")

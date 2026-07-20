@@ -61,7 +61,6 @@ pub fn defaults_toml() -> String {
         database.max_compactions = 1
         database.max_flushes = 1
         database.write_buffer = 16384
-        database.block_cache = 65536
         database.write_ahead_log = true
 
         [store.fst]
